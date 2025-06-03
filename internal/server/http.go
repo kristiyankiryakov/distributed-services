@@ -2,16 +2,17 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/gorilla/mux"
 	"net/http"
 )
 
 func NewHTTPServer(addr string) *http.Server {
-	httpsrv := newHTTPServer()
+	httpSrv := newHTTPServer()
 
 	r := mux.NewRouter()
-	r.HandleFunc("/", httpsrv.handleProduce).Methods("POST")
-	r.HandleFunc("/", httpsrv.handleConsume).Methods("GET")
+	r.HandleFunc("/", httpSrv.handleProduce).Methods("POST")
+	r.HandleFunc("/", httpSrv.handleConsume).Methods("GET")
 
 	return &http.Server{
 		Addr:    addr,
@@ -78,7 +79,7 @@ func (s *httpServer) handleConsume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	record, err := s.Log.Read(req.Offset)
-	if err == ErrOffsetNotFound {
+	if errors.Is(err, ErrOffsetNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
