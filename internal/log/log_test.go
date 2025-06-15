@@ -1,6 +1,7 @@
 package log
 
 import (
+	"errors"
 	api "github.com/kristiyankiryakov/distributed-services/internal/api/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -50,6 +51,8 @@ func testOutOfRangeErr(t *testing.T, log *Log) {
 	read, err := log.Read(1)
 	require.Nil(t, read)
 	require.Error(t, err)
+	var apiErr api.ErrOffsetOutOfRange
+	require.True(t, errors.As(err, &apiErr))
 }
 
 func testInitExisting(t *testing.T, o *Log) {
