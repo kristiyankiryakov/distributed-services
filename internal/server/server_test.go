@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"github.com/kristiyankiryakov/distributed-services/internal/auth"
 	"github.com/kristiyankiryakov/distributed-services/internal/config"
+	"google.golang.org/grpc/codes"
 	"net"
 	"testing"
 	"time"
@@ -25,6 +27,7 @@ func TestServer(t *testing.T) {
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
 		"produce/consume stream succeeds":                    testProduceConsumeStream,
 		"consume past log boundary fails":                    testConsumePastBoundary,
+		"unauthorized fails":                                 testUnauthorized,
 	}
 
 	for scenario, fn := range scenarios {
@@ -82,22 +85,6 @@ func setupTest(
 		config.NobodyClientKeyFile,
 	)
 
-	//clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-	//	CertFile: config.ClientCertFile,
-	//	KeyFile:  config.ClientKeyFile,
-	//	CAFile:   config.CAFile,
-	//})
-	//require.NoError(t, err)
-	//
-	//clientCreds := credentials.NewTLS(clientTLSConfig)
-	//cc, err := grpc.NewClient(
-	//	l.Addr().String(),
-	//	grpc.WithTransportCredentials(clientCreds),
-	//)
-	//require.NoError(t, err)
-	//
-	//client := api.NewLogClient(cc)
-
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -108,11 +95,14 @@ func setupTest(
 	require.NoError(t, err)
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
+
 	clog, err := log.NewLog(t.TempDir(), log.Config{})
 	require.NoError(t, err)
 
 	cfg = &Config{
-		CommitLog: clog,
+		CommitLog:  clog,
+		Authorizer: authorizer,
 	}
 
 	if fn != nil {
@@ -243,5 +233,41 @@ func testProduceConsumeStream(
 				Offset: uint64(i),
 			})
 		}
+	}
+}
+
+func testUnauthorized(
+	t *testing.T,
+	_,
+	client api.LogClient,
+	config *Config,
+) {
+	ctx := context.Background()
+	produce, err := client.Produce(ctx,
+		&api.ProduceRequest{
+			Record: &api.Record{
+				Value: []byte("hello world"),
+			},
+		},
+	)
+	if produce != nil {
+		t.Fatalf("produce response should be nil")
+	}
+
+	gotCode, wantCode := status.Code(err), codes.PermissionDenied
+	if gotCode != wantCode {
+		t.Fatalf("got code: %d, want: %d", gotCode, wantCode)
+	}
+
+	consume, err := client.Consume(ctx, &api.ConsumeRequest{
+		Offset: 0,
+	})
+	if consume != nil {
+		t.Fatalf("consume response should be nil")
+	}
+
+	gotCode, wantCode = status.Code(err), codes.PermissionDenied
+	if gotCode != wantCode {
+		t.Fatalf("got code: %d, want: %d", gotCode, wantCode)
 	}
 }
